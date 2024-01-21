@@ -1,5 +1,9 @@
 // Aim-Trainer.cpp : This file contains the 'main' function. Program execution begins and ends there.
-// IMPLEMENT THE FPP AIM
+// [DONE] IMPLEMENT THE FPP AIM 
+// [DONE - MAYBE] Fix Bug the Target spawn in gun area
+// Fix the bullet, must be travel not like this
+// Coba Buat tampilin 3D OBJ
+// Add Timer
 //
 
 #include <iostream>
@@ -8,6 +12,7 @@
 #include <ctime>
 #include <thread>
 #include <chrono>
+#include <vector>
 
 #define UFTHColor CLITERAL(Color) { 20, 30, 40, 20 }
 #define ICON {"Icons/bullseye.png"}
@@ -26,6 +31,8 @@
 #define BULLET_DISTANCE 100
 #define BULLET_WIDTH 6
 #define BULLET_REC CLITERAL(Rectangle) {957, 625, 0, 0}
+
+#define COUNTDOWN_TIME 90
 
 struct Bullet {
     Vector2 position;
@@ -47,6 +54,9 @@ Bullet bullets[maxBullets];
 bool isMouseOver(Vector2 circlePosition, float radius);
 bool isCenter(Vector2 cursorPosition, float radius1, Vector2 targetPosition, float radius2);
 float Clamp(float value, float min, float max);
+
+std::vector<int> timeCount{ 0,0,0 };
+void timeCountDown(int seconds, std::vector<int> timeCount);
 
 int main()
 {
@@ -108,6 +118,10 @@ int main()
     while (!WindowShouldClose()) {
         float deltaTime = GetFrameTime();
         float recoilDistance = RECOIL_DISTANCE;
+
+        //if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        //    timeCountDown(COUNTDOWN_TIME, timeCount);
+        //}
 
         switch (BulletState)
         {
@@ -196,21 +210,22 @@ int main()
             BulletState = GROWING;
         }
         else if (isAtTarget && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && bullets >= 0) {
-            float xTarget = rand() % (1601 - 800) + 800.F;
-            float yTarget = rand() % (801 - 600) + 600.F;
+            float xTarget = rand() % (1601 - 100) + 100.F;
+            float yTarget = rand() % (801 - 100) + 100.F;
             float xMove = 0;
             if (yTarget > centerScreenY && xTarget > (centerScreenX - 200) && xTarget <= centerScreenX) {
                 //xMove = xTarget - centerScreenX;
                 //xMove = xMove + 200 + (xMove * (3 / 5));
-                xTarget = 760;
+                xTarget = 960 - 200;
             }
             else if (yTarget > centerScreenX && xTarget < (centerScreenX + 200) && xTarget >= centerScreenX) {
                 //xMove = xTarget - centerScreenX;
                 //xMove = xMove - 200 + (xMove * (3 / 5));
-                xTarget = 1160;
+                xTarget = 960 + 200;
             }
             else {
                 //xMove = 0;
+                xTarget = xTarget;
             }
             //xTarget += xMove;
             targetPos.x = xTarget;
@@ -233,8 +248,11 @@ int main()
         else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             isRecoiling = false;
         }
+        else if (IsKeyPressed(KEY_SPACE)) {
+            TakeScreenshot("test.png");
+        }
         else {
-            color = VIOLET;
+            color = GREEN;
         }
 
 
@@ -278,7 +296,7 @@ int main()
             Fade(FIRE_EFFECT_2_COLOR, FireEffect_2)
         );
 
-        DrawRectangle(960, 540, 200, 10, GOLD);
+        // DrawRectangle(960, 540, 200, 10, GOLD);
 
         // Draw GUN
         DrawTexture(gun, (int)gunPos.x, (int)gunPos.y, GRAY);
@@ -303,6 +321,16 @@ int main()
             RAYWHITE
         );
 
+        // Draw CountDown
+        int countDownFontSize = 30;
+        int countDownTextPosX = MeasureText(TextFormat("%d:%d", timeCount[1], timeCount[2]), countDownFontSize);
+        DrawText(
+            TextFormat("%d:%d", timeCount[1], timeCount[2]),
+            cursorPos.x - (float)countDownTextPosX / 2,
+            static_cast<int>(y) + (int)(30) * 9.F + (int)gunPos.y,
+            countDownFontSize,
+            RAYWHITE
+        );
 
         Vector2 currentMousePos = GetMousePosition();
         float deltaX = currentMousePos.x - prevMousePos.x;
@@ -345,6 +373,31 @@ float Clamp(float value, float min, float max) {
     }
     else {
         return value;
+    }
+}
+
+void timeCountDown(int seconds, std::vector<int> timeCount)
+{
+    std::time_t start_time = std::time(nullptr);
+
+    while (true) {
+        std::time_t current_time = std::time(nullptr);
+        int elapsed_time = static_cast<int>(std::difftime(current_time, start_time));
+        int remaining_time = seconds - elapsed_time;
+
+        if (remaining_time <= 0) {
+            std::cout << "INFO: [Time's UP]" << std::endl;
+            break;
+        }
+
+        int minutes = remaining_time / 60;
+        int secs = remaining_time % 60;
+
+        timeCount[0] = remaining_time;
+        timeCount[1] = minutes;
+        timeCount[2] = secs;
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 
