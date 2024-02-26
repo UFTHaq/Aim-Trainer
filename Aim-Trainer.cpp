@@ -111,7 +111,7 @@ std::vector<std::vector<Color>> gunBtnColorHover{
 #define ICON_CLOSE_FIGHT_LOC        {"Icons/Close.png"}
 
 #define FIGHT_BTN_COOLDOWN_FRAMES   100
-#define LEADERBOARD_DATA_CAPACITY   100
+#define LEADERBOARD_DATA_CAPACITY   25
 
 static const char* CSV_FILENAME_LEADERBOARDS{ "Data/Leaderboards.txt" };
 
@@ -359,6 +359,7 @@ struct Gun {
     int speed{};
     int power{};
     int capacity{};
+    float recoil_distance{};
     Texture2D FPP{};
     Texture2D SIDE{};
     Texture2D FPP_GAME{};
@@ -809,7 +810,7 @@ void DisplayGameOverMenu(GamePage& gamePage, std::vector<HighScoreEntry>& Leader
         std::sort(LeaderboardData.begin(), LeaderboardData.end());
         is_leaderboard_saved_to_txt = false;
 
-        if (LeaderboardData.size() > LEADERBOARD_DATA_CAPACITY) {
+        if (LeaderboardData.size() >= LEADERBOARD_DATA_CAPACITY) {
             LeaderboardData.pop_back();
         }
 
@@ -984,42 +985,48 @@ void ResizeContentPopupLeaderboard(std::vector<HighScoreEntry>& LeaderboardData)
 
 void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t level, std::chrono::system_clock::time_point& time_start, const Font& font)
 {
-    //if (!IsCursorHidden) {
-        HideCursor();
-    //}
+    HideCursor();
 
     float dt = GetFrameTime();
-    float recoil_distance = 20.F;
+    Gun Gun_Used = Guns.at(weapon_choice);
+    float recoil_distance = Gun_Used.recoil_distance;
+    float fire_rate = 0.2F;
+    static float time_since_last_shot = 0.0F;
+    static bool is_draw_shoot_fire = false;
+    static bool is_recoiling = false;
 
     static size_t all_bullet = 200;
-    size_t magazine_size = Guns[weapon_choice].capacity;
+    size_t magazine_size = Gun_Used.capacity;
     static size_t bullet_in_gun = magazine_size;
     size_t reload = magazine_size - bullet_in_gun;
     size_t last_reload = all_bullet;
     static size_t target_visibility = TARGET_VISIBLE;
+    float center_screen_y = (float)(GetScreenHeight() / 2);
 
-    Vector2 crosshair_coor = { (float)(GetScreenWidth() / 2), (float)(GetScreenHeight() / 2) };
+    static Vector2 crosshair_coor = { (float)(GetScreenWidth() / 2), (float)(GetScreenHeight() / 2) };
     float crosshair_radius = 6.F;
 
     static Vector2 target_coor = { (float)(GetScreenWidth() / 2), (float)(GetScreenHeight() / 2) };
     float target_radius = (float)level_choice;
 
-    if (IsKeyPressed(KEY_Q)) {
-        gamePage = SETUP_MENU;
-    }
-    if (IsKeyPressed(KEY_G)) {
-        gamePage = GAMEOVER_MENU;
-    }
+    float source_width = (float)Gun_Used.FPP_GAME.width / 4;
+    float source_height = 1080;
+    static float weapon_y_pos = 0;
+    static float weapon_y_offset = 0;
+    //static float recoil = 0;   // BELUM di IMPLEMENTASI
 
+    
     bool at_target = CheckCollisionCircles(crosshair_coor, crosshair_radius, target_coor, target_radius);
 
-    static Vector2 prev_mouse_pos = { 0,0 };
-    static Vector2 current_mouse_pos = { 0,0 };
+    static Vector2 prev_mouse_pos = crosshair_coor;
+    static Vector2 current_mouse_pos = crosshair_coor;
 
     // SHOOT
     if (bullet_in_gun > 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         bullet_in_gun--;
-        //recoiling
+        
+        is_draw_shoot_fire = true;
+        is_recoiling = true;
 
         if (at_target) {
             score++;
@@ -1027,6 +1034,7 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
 
             Vector2 target_pos = RandomizeTarget();
 
+            // FORBIDEN RECT AREA
             Rectangle area_rect = {
                 GetScreenWidth() * 0.375F,
                 GetScreenHeight() * 0.40F,
@@ -1036,7 +1044,7 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
 
             //DrawRectangleRec(area_rect, LIGHTGRAY);
 
-            // CHECK TARGET RESPAWN ON FORBIDEN AREA OR NOT
+            // CHECK TARGET TO NOT RESPAWN IN FORBIDEN AREA
             while (CheckCollisionPointRec(target_pos, area_rect)) {
                 target_pos = RandomizeTarget();
             }
@@ -1049,7 +1057,27 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
         }
     }
 
+    if (is_recoiling) {
+        float recoil = recoil_distance * dt * 90.F;
+        crosshair_coor.y -= recoil;
+        weapon_y_pos -= recoil;
 
+        if (crosshair_coor.y <= center_screen_y - recoil_distance) {
+            crosshair_coor.y = center_screen_y - recoil_distance;
+            weapon_y_pos = 0 - recoil_distance;
+            is_recoiling = false;
+        }
+    }
+    else {
+        float derecoil = recoil_distance * dt * 4.F;
+        crosshair_coor.y += derecoil;
+        weapon_y_pos += derecoil;
+
+        if (crosshair_coor.y >= center_screen_y) {
+            crosshair_coor.y = center_screen_y;
+            weapon_y_pos = 0;
+        }
+    }
 
 
     // RELOAD
@@ -1063,6 +1091,19 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
         else {
             bullet_in_gun += all_bullet;
             all_bullet -= all_bullet;
+        }
+    }
+
+    if (is_draw_shoot_fire) {
+        if (time_since_last_shot < 0.075F) {
+            if (weapon_choice != AWM) {
+                DrawCircleGradient((int)crosshair_coor.x, (int)crosshair_coor.y, 75.F, Fade(YELLOW, 0.5F - time_since_last_shot), Fade(WHITE, time_since_last_shot));
+            }
+            time_since_last_shot += dt;
+        }
+        else {
+            time_since_last_shot = 0;
+            is_draw_shoot_fire = false;
         }
     }
 
@@ -1083,7 +1124,7 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
 
     {
         // DRAW CROSSHAIR
-        DrawCircle((int)crosshair_coor.x, (int)crosshair_coor.y, crosshair_radius, LIGHTGRAY);
+        //DrawCircle((int)crosshair_coor.x, (int)crosshair_coor.y, crosshair_radius, LIGHTGRAY);
     }
 
     {
@@ -1102,28 +1143,30 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
         else if (IsKeyPressed(KEY_FOUR)) {
             weapon_choice = GLOCK;
         }
+
+        if (IsKeyPressed(KEY_Q)) {
+            gamePage = SETUP_MENU;
+        }
+        if (IsKeyPressed(KEY_G)) {
+            gamePage = GAMEOVER_MENU;
+        }
         //
 
-        float source_width = (float)Guns.at(weapon_choice).FPP_GAME.width / 4;
-        float source_height = 1080;
-        static float gun_pos_y = 0;
-        static float offset = 0;
-        float recoil = 0;   // BELUM di IMPLEMENTASI
-        gun_pos_y += recoil;
+        
 
         switch (weapon_choice)
         {
         case M416:
-            offset = 5;
+            weapon_y_offset = 5;
             break;
         case AK47:
-            offset = 1;
+            weapon_y_offset = 1;
             break;
         case AWM:
-            offset = 0;
+            weapon_y_offset = 0;
             break;
         case GLOCK:
-            offset = 0;
+            weapon_y_offset = 0;
             break;
         default:
             break;
@@ -1131,7 +1174,7 @@ void DisplayInGame(GamePage& gamePage, std::vector<Gun>& Guns, int time, size_t 
 
         Rectangle dest = {
             0,
-            gun_pos_y + offset,
+            weapon_y_pos + weapon_y_offset,
             source_width,
             source_height
         };
@@ -1280,10 +1323,10 @@ std::vector<Gun> LoadGunsData() {
     Texture2D FPP_GLOCK_TEX_SETUP = LoadTextureFromImage(FPP_GLOCK);
     Texture2D SIDE_GLOCK_TEX_SETUP = LoadTextureFromImage(SIDE_GLOCK);
 
-    Gun M416 = { "M416", "ASSAULT RIFLE", 820, 45, 30 , FPP_M416_TEX_SETUP, SIDE_M416_TEX_SETUP, FPP_M416_TEX_IN_GAME };
-    Gun AK47 = { "AK47", "ASSAULT RIFLE", 700, 50, 30 , FPP_AK47_TEX_SETUP, SIDE_AK47_TEX_SETUP, FPP_AK47_TEX_IN_GAME };
-    Gun AWM = { "AWM", "SNIPER RIFLE", 300, 95, 7, FPP_AWM_TEX_SETUP, SIDE_AWM_TEX_SETUP, FPP_AWM_TEX_IN_GAME };
-    Gun GLOCK = { "GLOCK", "HANDGUN", 400, 25, 7 , FPP_GLOCK_TEX_SETUP, SIDE_GLOCK_TEX_SETUP, FPP_GLOCK_TEX_IN_GAME };
+    Gun M416  = { "M416", "ASSAULT RIFLE", 820, 45, 30 , 20.F, FPP_M416_TEX_SETUP, SIDE_M416_TEX_SETUP, FPP_M416_TEX_IN_GAME };
+    Gun AK47  = { "AK47", "ASSAULT RIFLE", 700, 50, 30 , 35.F, FPP_AK47_TEX_SETUP, SIDE_AK47_TEX_SETUP, FPP_AK47_TEX_IN_GAME };
+    Gun AWM   = { "AWM", "SNIPER RIFLE", 300, 95, 7, 25.F, FPP_AWM_TEX_SETUP, SIDE_AWM_TEX_SETUP, FPP_AWM_TEX_IN_GAME };
+    Gun GLOCK = { "GLOCK", "HANDGUN", 400, 25, 7 , 15.F, FPP_GLOCK_TEX_SETUP, SIDE_GLOCK_TEX_SETUP, FPP_GLOCK_TEX_IN_GAME };
 
     std::vector<Gun> Guns{ M416, AK47, AWM, GLOCK };
 
@@ -2040,8 +2083,9 @@ void DisplaySetupMenu(
                     weapon_choice = LeaderboardData[i].getWeaponFormatted(LeaderboardData[i].weapon);
                     weapon_color = LeaderboardData[i].color;
                     gamePage = IN_GAME;
+                    SetMousePosition(GetScreenWidth() / 2, GetScreenHeight() / 2);
                 }
-            }
+            }                                                                     
             else {
                 fight_text_color = BLACK;
                 fight_alpha = 0.5F;
